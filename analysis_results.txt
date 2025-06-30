@@ -1,0 +1,94 @@
+
+================================================================================
+Timestamp: 2025-06-27 07:30:24
+Image Path: /home/coder/vkist/medgemma/images/1.jpg
+
+English Analysis:
+The condition affects the knee. A large, hypoechoic mass is seen in the posterior aspect of the knee, likely a Baker's cyst.
+
+Based on these findings, the most likely diagnosis is **Baker's cyst**.
+
+
+Vietnamese Translation:
+Tình trạng này ảnh hưởng đến đầu gối. Một khối lớn, giảm âm thấy ở mặt sau đầu gối, có khả năng là nang Baker.
+
+Dựa trên những phát hiện này, chẩn đoán có khả năng nhất là **nang Baker**.
+
+================================================================================
+
+================================================================================
+Timestamp: 2025-06-27 07:31:05
+Image Path: /home/coder/vkist/medgemma/images/2.jpg
+
+English Analysis:
+The condition affects the knee. There is a visible fluid collection (likely a cyst) in the posterior aspect of the knee, near the popliteal fossa.
+
+Based on these findings, the most likely diagnosis is Baker's cyst.
+
+
+Vietnamese Translation:
+Tình trạng này ảnh hưởng đến đầu gối. Có một ổ tụ dịch thấy rõ (nhiều khả năng là nang) ở mặt sau của đầu gối, gần hố khoeo.
+
+Dựa trên những phát hiện này, chẩn đoán có khả năng nhất là nang Baker.
+
+================================================================================
+
+================================================================================
+Timestamp: 2025-06-27 07:31:33
+Image Path: /home/coder/vkist/medgemma/images/3.jpg
+
+English Analysis:
+The condition affects the knee joint. A Baker's cyst is seen in the popliteal fossa, suggesting Baker's cyst.
+
+
+Vietnamese Translation:
+Tình trạng bệnh ảnh hưởng đến khớp gối. Một nang Baker được thấy ở hố khoeo, gợi ý nang Baker.
+
+================================================================================
+
+================================================================================
+Timestamp: 2025-06-27 07:32:09
+Image Path: /home/coder/vkist/medgemma/images/4.jpg
+
+English Analysis:
+The condition affects the knee joint. Joint effusion is seen in the medial compartment. Osteophytes are seen in the posterior aspect of the knee, suggesting osteophytes.
+
+The most likely diagnosis is osteophytes.
+
+
+Vietnamese Translation:
+Tình trạng này ảnh hưởng đến khớp gối. Dịch khớp được thấy ở khoang trong. Gai xương được thấy ở mặt sau của gối, gợi ý gai xương.
+
+Chẩn đoán có khả năng cao nhất là gai xương.
+
+================================================================================
+
+================================================================================
+Timestamp: 2025-06-27 07:32:22
+Image Path: /home/coder/vkist/medgemma/images/5.jpg
+
+English Analysis:
+The condition affects the knee joint. There is a joint effusion, which is seen in the posterior aspect of the knee, suggesting joint effusion.
+
+
+Vietnamese Translation:
+Tình trạng này ảnh hưởng đến khớp gối. Có tràn dịch khớp, được thấy ở mặt sau khớp gối, gợi ý tình trạng tràn dịch khớp.
+
+================================================================================
+
+================================================================================
+Timestamp: 2025-06-27 07:32:37
+Image Path: /home/coder/vkist/medgemma/images/6.jpg
+
+English Analysis:
+The condition affects the knee. Joint effusion is seen in the knee, suggesting joint effusion.
+
+Based on the ultrasound image, the most likely diagnosis is **joint effusion**.
+
+
+Vietnamese Translation:
+Tình trạng này ảnh hưởng đến đầu gối. Quan sát thấy tràn dịch khớp gối, gợi ý tràn dịch khớp.
+
+Dựa trên hình ảnh siêu âm, chẩn đoán có khả năng nhất là **tràn dịch khớp gối**.
+
+================================================================================
