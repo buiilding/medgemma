@@ -1,53 +1,80 @@
-from transformers import pipeline, AutoImageProcessor
+from transformers.pipelines import pipeline
+from transformers import AutoImageProcessor
 from PIL import Image
 import torch
-import google.generativeai as genai
 import os
 from datetime import datetime
+from typing import TypedDict, List, Optional
+from langgraph.graph import StateGraph, END, START
+from langfuse.callback import CallbackHandler
 
 # Set torch precision
 torch.set_float32_matmul_precision("high")
 
-# Initialize Gemini API
-GEMINI_API_KEY = "AIzaSyB5bF8Ch9Dqu6t_6G7TKgQzlaRKcJSSzD8"  # Replace with your actual API key
-genai.configure(api_key=GEMINI_API_KEY)
+# Initialize Langfuse for observability (optional)
+# Uncomment and configure if you want to use Langfuse
+from langfuse import Langfuse
+LANGFUSE_PUBLIC_KEY = "pk-lf-e0a91ba6-fe2f-43a0-930f-d391ed91be4d"
+LANGFUSE_SECRET_KEY = "sk-lf-10993a05-3b42-4780-a055-aa039d953273"
+LANGFUSE_HOST = "https://cloud.langfuse.com"
+langfuse = Langfuse(public_key=LANGFUSE_PUBLIC_KEY, secret_key=LANGFUSE_SECRET_KEY, host=LANGFUSE_HOST)
+
+# Define the state structure for our workflow
+class MedicalAnalysisState(TypedDict):
+    image_path: str
+    image: Optional[Image.Image]
+    image_loaded: bool
+    analysis_result: str
+    errors: List[str]
+    timestamp: str
 
 def initialize_models():
-    """Initialize both MedGemma and Gemini models"""
+    """Initialize MedGemma model"""
     print("Initializing MedGemma model...")
     processor = AutoImageProcessor.from_pretrained(
-        "google/medgemma-4b-it",  # or whatever checkpoint you use
+        "google/medgemma-4b-it",
         use_fast=True
         )
     pipe = pipeline(
         "image-text-to-text",
         model="google/medgemma-4b-it",
         torch_dtype=torch.bfloat16,
-        device="cuda",
+        device="cpu",
         image_processor=processor
     )
     
-    print("Initializing Gemini model...")
-    gemini_model = genai.GenerativeModel('gemini-2.0-flash')
-    
-    return pipe, gemini_model
+    return pipe
 
-def translate_to_vietnamese(text, gemini_model):
-    """Translate text to Vietnamese using Gemini"""
+# LangGraph node functions
+def load_image(state: MedicalAnalysisState) -> MedicalAnalysisState:
+    """Load and validate the image"""
     try:
-        prompt = f"Translate the following medical text to Vietnamese. Keep medical terms accurate and professional, only return the translated text:\n\n{text}"
-        response = gemini_model.generate_content(prompt)
-        return response.text
+        print(f"Loading image: {state['image_path']}")
+        image = Image.open(state['image_path'])
+        
+        return {
+            **state,
+            "image": image,
+            "image_loaded": True,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
     except Exception as e:
-        print(f"Translation error: {e}")
-        return text  # Return original text if translation fails
+        error_msg = f"Failed to load image: {str(e)}"
+        print(error_msg)
+        
+        return {
+            **state,
+            "errors": state["errors"] + [error_msg],
+            "image_loaded": False
+        }
 
-def analyze_knee_image(image_path, pipe, gemini_model):
-    """Analyze knee ultrasound image and translate to Vietnamese"""
+def analyze_knee_image(state: MedicalAnalysisState, pipe) -> MedicalAnalysisState:
+    """Analyze the knee ultrasound image using MedGemma"""
+    if not state["image_loaded"]:
+        return state
+    
     try:
-        # Load image
-        image = Image.open(image_path)
-        print(f"Successfully loaded image: {image_path}")
+        print("Analyzing image with MedGemma...")
         
         # Prepare messages for MedGemma
         inflammation_knee = True  # You can modify this based on your needs
@@ -57,10 +84,11 @@ def analyze_knee_image(image_path, pipe, gemini_model):
             first_message = "This person does not have inflammation in their knee based on the ultrasound"
 
         second_message = (
+            "On the left is the original ultrasound image. On the right is the segmented region of interest."
             "Based on the ultrasound knee image, please describe the affected anatomical structures and any visible abnormalities. "
             "Describe findings such as joint effusion, synovial thickening, bone spurs, or cartilage erosion. "
             "Then, based on these findings, identify the most likely diagnosis among the following: "
-            "Baker’s cyst, osteophytes (bone spurs), cartilage degeneration, joint effusion, or synovitis. "
+            "Baker's cyst, osteophytes (bone spurs), cartilage degeneration, joint effusion, or synovitis. "
             "Your response should follow this format:\n\n"
             "'The condition affects the [bone/region]. [Finding] is seen in the [specific location], suggesting [diagnosis].'"
         )
@@ -75,53 +103,111 @@ def analyze_knee_image(image_path, pipe, gemini_model):
                 "content": [
                     {"type": "text", "text": first_message},
                     {"type": "text", "text": second_message},
-                    {"type": "image", "image": image},
+                    {"type": "image", "image": state["image"]},
                 ]
             }
         ]
 
         # Generate analysis
-        print("Generating analysis...")
         output = pipe(text=messages, max_new_tokens=200)
-        english_analysis = output[0]["generated_text"][-1]["content"]
+        analysis_result = output[0]["generated_text"][-1]["content"]
         
-        # Translate to Vietnamese
-        print("Translating to Vietnamese...")
-        vietnamese_analysis = translate_to_vietnamese(english_analysis, gemini_model)
-        
-        return english_analysis, vietnamese_analysis
+        return {
+            **state,
+            "analysis_result": analysis_result
+        }
         
     except Exception as e:
-        print(f"Error analyzing image: {e}")
-        return None, None
+        error_msg = f"Analysis failed: {str(e)}"
+        print(error_msg)
+        
+        return {
+            **state,
+            "errors": state["errors"] + [error_msg]
+        }
 
-def save_to_file(image_path, english_text, vietnamese_text, filename="analysis_results.txt"):
-    """Save analysis results to a text file"""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+def save_results(state: MedicalAnalysisState) -> MedicalAnalysisState:
+    """Save analysis results to file"""
+    try:
+        filename = "analysis_results.txt"
+        with open(filename, "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"Timestamp: {state['timestamp']}\n")
+            f.write(f"Image Path: {state['image_path']}\n")
+            f.write(f"\nAnalysis Result:\n{state['analysis_result']}\n")
+            if state['errors']:
+                f.write(f"\nErrors:\n" + "\n".join(state['errors']) + "\n")
+            f.write(f"{'='*80}\n")
+        
+        print(f"Results saved to {filename}")
+        return state
+    except Exception as e:
+        error_msg = f"Failed to save results: {str(e)}"
+        print(error_msg)
+        return {
+            **state,
+            "errors": state["errors"] + [error_msg]
+        }
+
+def check_for_errors(state: MedicalAnalysisState) -> str:
+    """Route based on whether there are errors"""
+    if state["errors"]:
+        return "error_handler"
+    return "save_results"
+
+def error_handler(state: MedicalAnalysisState) -> MedicalAnalysisState:
+    """Handle errors in the workflow"""
+    print("Workflow encountered errors:")
+    for error in state["errors"]:
+        print(f"  - {error}")
+    return state
+
+def create_workflow(pipe):
+    """Create the LangGraph workflow"""
+    # Create the state graph
+    workflow = StateGraph(MedicalAnalysisState)
     
-    with open(filename, "a", encoding="utf-8") as f:
-        f.write(f"\n{'='*80}\n")
-        f.write(f"Timestamp: {timestamp}\n")
-        f.write(f"Image Path: {image_path}\n")
-        f.write(f"\nEnglish Analysis:\n{english_text}\n")
-        f.write(f"\nVietnamese Translation:\n{vietnamese_text}\n")
-        f.write(f"{'='*80}\n")
+    # Add nodes
+    workflow.add_node("load_image", load_image)
+    workflow.add_node("analyze_knee_image", lambda state: analyze_knee_image(state, pipe))
+    workflow.add_node("save_results", save_results)
+    workflow.add_node("error_handler", error_handler)
+    
+    # Set entry point
+    workflow.set_entry_point("load_image")
+    
+    # Add edges
+    workflow.add_edge("load_image", "analyze_knee_image")
+    workflow.add_edge("save_results", END)
+    workflow.add_edge("error_handler", END)
+    
+    # Add conditional edge from analyze_knee_image
+    workflow.add_conditional_edges(
+        "analyze_knee_image",
+        check_for_errors,
+        {
+            "error_handler": "error_handler",
+            "save_results": "save_results"
+        }
+    )
+    
+    # Compile the graph
+    return workflow.compile()
 
 def main():
-    """Main function to run the analysis loop"""
-    # Check if Gemini API key is set
-    if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
-        print("Please set your Gemini API key in the GEMINI_API_KEY variable!")
-        return
+    """Main function to run the analysis workflow"""
+    # Initialize the model
+    pipe = initialize_models()
+    print("Model initialized successfully!")
     
-    # Initialize models
-    pipe, gemini_model = initialize_models()
-    print("Models initialized successfully!")
+    # Create the workflow
+    app = create_workflow(pipe)
+    print("Workflow created successfully!")
     
     # Main loop
     while True:
         print("\n" + "="*50)
-        print("Knee Ultrasound Analysis Tool")
+        print("Knee Ultrasound Analysis Tool (LangGraph)")
         print("="*50)
         
         # Get image path from user
@@ -136,22 +222,44 @@ def main():
             print(f"Error: File not found at {image_path}")
             continue
         
-        # Analyze image
-        english_result, vietnamese_result = analyze_knee_image(image_path, pipe, gemini_model)
+        # Initialize state
+        initial_state = MedicalAnalysisState(
+            image_path=image_path,
+            image=None,
+            image_loaded=False,
+            analysis_result="",
+            errors=[],
+            timestamp=""
+        )
         
-        if english_result and vietnamese_result:
-            # Print results
+        # Run the workflow
+        try:
+            print("Starting analysis workflow...")
+            
+            # Create Langfuse callback handler for tracing
+            langfuse_handler = CallbackHandler(
+                public_key=LANGFUSE_PUBLIC_KEY,
+                secret_key=LANGFUSE_SECRET_KEY,
+                host=LANGFUSE_HOST
+            )
+            
+            # Run workflow with Langfuse tracing
+            result = app.invoke(
+                initial_state,
+                config={"callbacks": [langfuse_handler]}
+            )
+            
+            # Display results
             print("\n" + "="*50)
             print("ANALYSIS RESULTS")
             print("="*50)
-            print(f"\nEnglish Analysis:\n{english_result}")
-            print(f"\nVietnamese Translation:\n{vietnamese_result}")
+            print(f"\nAnalysis Result:\n{result['analysis_result']}")
             
-            # Save to file
-            save_to_file(image_path, english_result, vietnamese_result)
-            print(f"\nResults saved to analysis_results.txt")
-        else:
-            print("Analysis failed. Please try again with a different image.")
+            if result['errors']:
+                print(f"\nErrors encountered:\n" + "\n".join(result['errors']))
+                
+        except Exception as e:
+            print(f"Workflow execution failed: {e}")
 
 if __name__ == "__main__":
     main() 
